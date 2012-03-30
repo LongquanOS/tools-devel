@@ -1,0 +1,50 @@
+ 
+
+
+export SRC=$TMPOS/sources
+export BUILD=$TMPOS/sources/build
+
+#clean build dirs 
+function ebuild_clean()
+{
+cd $BUILD && rm -rvf $BUILD/* 
+}
+
+function ebuild_make()
+{
+make -j32 && make install
+}
+
+
+
+编译  NCURSES 5.9
+
+
+tar -xvpf $SRC/ncurses-5.9.tar.gz -C $BUILD
+cd $BUILD/ncurses-5.9
+./configure --prefix=/usr --with-shared --without-debug --enable-widec
+
+make -j32 && make install
+
+编译dpkg
+
+
+./configure --prefix=/usr
+make
+make install
+
+
+编译 perl
+
+
+libxml
+./configure --prefix=/usr
+make && make install
+
+
+linxsltproc
+./configure --prefix=/usr
+make && make install
+
+
+编译 po4a

@@ -1,0 +1,1062 @@
+#!/bin/sh
+#############################################################################################
+
+mkdir -v $LFS/{dev,proc,sys}
+mknod -m 600 $LFS/dev/console c 5 1
+mknod -m 666 $LFS/dev/null c 1 3
+mount -v --bind /dev $LFS/dev
+mount -vt devpts devpts $LFS/dev/pts
+mount -vt tmpfs shm $LFS/dev/shm
+mount -vt proc proc $LFS/proc
+mount -vt sysfs sysfs $LFS/sys
+
+chroot "$LFS" /tools/bin/env -i \
+    HOME=/root TERM="$TERM" PS1='\u:\w\$ ' \
+    PATH=/bin:/usr/bin:/sbin:/usr/sbin:/tools/bin \
+    /tools/bin/bash --login +h
+
+#############################################################################################
+
+mkdir -pv /{bin,boot,etc/{opt,sysconfig},home,lib,mnt,opt,run}
+mkdir -pv /{media/{floppy,cdrom},sbin,srv,var}
+install -dv -m 0750 /root
+install -dv -m 1777 /tmp /var/tmp
+mkdir -pv /usr/{,local/}{bin,include,lib,sbin,src}
+mkdir -pv /usr/{,local/}share/{doc,info,locale,man}
+mkdir -v  /usr/{,local/}share/{misc,terminfo,zoneinfo}
+mkdir -pv /usr/{,local/}share/man/man{1..8}
+for dir in /usr /usr/local; do
+  ln -sv share/{man,doc,info} $dir
+done
+case $(uname -m) in
+ x86_64) ln -sv lib /lib64 && ln -sv lib /usr/lib64 ;;
+esac
+mkdir -v /var/{log,mail,spool}
+ln -sv /run /var/run
+ln -sv /run/lock /var/lock
+mkdir -pv /var/{opt,cache,lib/{misc,locate},local}
+
+#############################################################################################
+
+ln -sv /tools/bin/{bash,cat,echo,pwd,stty} /bin
+ln -sv /tools/bin/perl /usr/bin
+ln -sv /tools/lib/libgcc_s.so{,.1} /usr/lib
+ln -sv /tools/lib/libstdc++.so{,.6} /usr/lib
+sed 's/tools/usr/' /tools/lib/libstdc++.la > /usr/lib/libstdc++.la
+ln -sv bash /bin/sh
+
+touch /etc/mtab
+
+cat > /etc/passwd << "EOF"
+root:x:0:0:root:/root:/bin/bash
+bin:x:1:1:bin:/dev/null:/bin/false
+nobody:x:99:99:Unprivileged User:/dev/null:/bin/false
+EOF
+
+cat > /etc/group << "EOF"
+root:x:0:
+bin:x:1:
+sys:x:2:
+kmem:x:3:
+tty:x:4:
+tape:x:5:
+daemon:x:6:
+floppy:x:7:
+disk:x:8:
+lp:x:9:
+dialout:x:10:
+audio:x:11:
+video:x:12:
+utmp:x:13:
+usb:x:14:
+cdrom:x:15:
+mail:x:34:
+nogroup:x:99:
+EOF
+
+exec /tools/bin/bash --login +h
+
+touch /var/run/utmp /var/log/{btmp,lastlog,wtmp}
+chgrp -v utmp /var/run/utmp /var/log/lastlog
+chmod -v 664 /var/run/utmp /var/log/lastlog
+chmod -v 600 /var/log/btmp
+
+
+
+##############################################################################################
+6.7. Linux-3.2.6 API Headers
+------------------------------------
+
+tar -xvpf $SRC/linux-3.2.6.tar.xz -C $BUILD
+cd $BUILD/linux-3.2.6/
+make mrproper
+make headers_check
+make INSTALL_HDR_PATH=dest headers_install
+find dest/include \( -name .install -o -name ..install.cmd \) -delete
+cp -rv dest/include/* /usr/include
+
+cd $BUILD
+rm -rvf $BUILD/* 
+##############################################################################################
+
+
+#############################################################################################
+6.8. Man-pages-3.35
+------------------------------------
+
+tar -xvpf $SRC/man-pages-3.35.tar.gz -C $BUILD
+cd $BUILD/man-pages-3.35
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+##############################################################################################
+
+#############################################################################################
+------------------------------------
+##############################################################################################
+5.7. Glibc-2.14.1
+------------------------------------
+
+DL=$(readelf -l /bin/sh | sed -n 's@.*interpret.*/tools\(.*\)]$@\1@p')
+sed -i "s|libs -o|libs -L/usr/lib -Wl,-dynamic-linker=$DL -o|" \
+        scripts/test-installation.pl
+unset DL
+
+
+
+tar -xvpf $SRC/glibc-2.14.1.tar.bz2 -C $BUILD
+cd $BUILD/glibc-2.14.1/
+
+sed -i -e 's/"db1"/& \&\& $name ne "nss_test1"/' scripts/test-installation.pl
+sed -i 's|@BASH@|/bin/bash|' elf/ldd.bash.in
+
+patch -Np1 -i $SRC/glibc-2.14.1-fixes-1.patch
+patch -Np1 -i $SRC/glibc-2.14.1-sort-1.patch
+patch -Np1 -i $SRC/glibc-2.14.1-gcc_fix-1.patch
+
+sed -i '195,213 s/PRIVATE_FUTEX/FUTEX_CLOCK_REALTIME/' \
+nptl/sysdeps/unix/sysv/linux/x86_64/pthread_rwlock_timed{rd,wr}lock.S
+
+
+mkdir -pv $BUILD/glibc-2.14.1/build
+cd $BUILD/glibc-2.14.1/build
+
+echo "CFLAGS += -march=i486 -mtune=native -O3 -pipe" > configparms 
+
+../configure --prefix=/usr \
+    --disable-profile --enable-add-ons \
+    --enable-kernel=2.6.25 --libexecdir=/usr/lib/glibc
+
+make -j32
+
+cp -v ../glibc-2.14.1/iconvdata/gconv-modules iconvdata
+make -k check 2>&1 | tee glibc-check-log
+grep Error glibc-check-log
+
+touch /etc/ld.so.conf
+make install
+
+cp -v ../glibc-2.14.1/sunrpc/rpc/*.h /usr/include/rpc
+cp -v ../glibc-2.14.1/sunrpc/rpcsvc/*.h /usr/include/rpcsvc
+cp -v ../glibc-2.14.1/nis/rpcsvc/*.h /usr/include/rpcsvc
+
+mkdir -pv /usr/lib/locale
+localedef -i cs_CZ -f UTF-8 cs_CZ.UTF-8
+localedef -i de_DE -f ISO-8859-1 de_DE
+localedef -i de_DE@euro -f ISO-8859-15 de_DE@euro
+localedef -i de_DE -f UTF-8 de_DE.UTF-8
+localedef -i en_HK -f ISO-8859-1 en_HK
+localedef -i en_PH -f ISO-8859-1 en_PH
+localedef -i en_US -f ISO-8859-1 en_US
+localedef -i en_US -f UTF-8 en_US.UTF-8
+localedef -i es_MX -f ISO-8859-1 es_MX
+localedef -i fa_IR -f UTF-8 fa_IR
+localedef -i fr_FR -f ISO-8859-1 fr_FR
+localedef -i fr_FR@euro -f ISO-8859-15 fr_FR@euro
+localedef -i fr_FR -f UTF-8 fr_FR.UTF-8
+localedef -i it_IT -f ISO-8859-1 it_IT
+localedef -i ja_JP -f EUC-JP ja_JP
+localedef -i tr_TR -f UTF-8 tr_TR.UTF-8
+localedef -i zh_CN -f GB18030 zh_CN.GB18030
+make localedata/install-locales
+
+cat > /etc/nsswitch.conf << "EOF"
+# Begin /etc/nsswitch.conf
+
+passwd: files
+group: files
+shadow: files
+
+hosts: files dns
+networks: files
+
+protocols: files
+services: files
+ethers: files
+rpc: files
+
+# End /etc/nsswitch.conf
+EOF
+
+tzselect
+
+cp -v --remove-destination /usr/share/zoneinfo/<xxx> /etc/localtime
+
+cat > /etc/ld.so.conf << "EOF"
+# Begin /etc/ld.so.conf
+/usr/local/lib
+/opt/lib
+EOF
+
+cat >> /etc/ld.so.conf << "EOF"
+# Add an include directory
+include /etc/ld.so.conf.d/*.conf
+EOF
+mkdir /etc/ld.so.conf.d
+
+
+cd $BUILD
+rm -rvf $BUILD/* 
+
+
+##############################################################################################
+
+#############################################################################################
+6.10. Re-adjusting the Toolchain
+------------------------------------
+
+mv -v /tools/bin/{ld,ld-old}
+mv -v /tools/$(gcc -dumpmachine)/bin/{ld,ld-old}
+mv -v /tools/bin/{ld-new,ld}
+ln -sv /tools/bin/ld /tools/$(gcc -dumpmachine)/bin/ld
+
+gcc -dumpspecs | sed -e 's@/tools@@g' \
+    -e '/\*startfile_prefix_spec:/{n;s@.*@/usr/lib/ @}' \
+    -e '/\*cpp:/{n;s@$@ -isystem /usr/include@}' > \
+    `dirname $(gcc --print-libgcc-file-name)`/specs
+
+###########################################
+
+echo 'main(){}' > dummy.c
+cc dummy.c -v -Wl,--verbose &> dummy.log
+readelf -l a.out | grep ': /lib'
+
+[Requesting program interpreter: /lib/ld-linux.so.2]
+
+###########################################
+
+grep -o '/usr/lib.*/crt[1in].*succeeded' dummy.log
+
+/usr/lib/crt1.o succeeded
+/usr/lib/crti.o succeeded
+/usr/lib/crtn.o succeeded
+
+###########################################
+
+grep -B1 '^ /usr/include' dummy.log
+
+#include <...> search starts here:
+ /usr/include
+
+###########################################
+
+grep 'SEARCH.*/usr/lib' dummy.log |sed 's|; |\n|g'
+
+
+SEARCH_DIR("/tools/i686-pc-linux-gnu/lib")
+SEARCH_DIR("/usr/lib")
+SEARCH_DIR("/lib");
+
+###########################################
+
+grep "/lib.*/libc.so.6 " dummy.log
+
+attempt to open /lib/libc.so.6 succeeded
+
+###########################################
+
+grep found dummy.log
+
+found ld-linux.so.2 at /lib/ld-linux.so.2
+
+###########################################
+rm -v dummy.c a.out dummy.log
+
+##############################################################################################
+
+#############################################################################################
+------------------------------------
+
+tar -xvpf $SRC/zlib-1.2.6.tar.bz2 -C $BUILD
+cd $BUILD/zlib-1.2.6
+
+./configure --prefix=/usr
+make
+make check
+make install
+					
+cd $BUILD
+rm -rvf $BUILD/*
+
+mv -v /usr/lib/libz.so.* /lib
+ln -sfv ../../lib/libz.so.1.2.6 /usr/lib/libz.so
+
+##############################################################################################
+6.12. File-5.10
+#############################################################################################
+------------------------------------
+
+tar -xvpf $SRC/file-5.10.tar.gz -C $BUILD
+cd $BUILD/file-5.10
+
+./configure --prefix=/usr
+make
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+##############################################################################################
+6.13. Binutils-2.22
+#############################################################################################
+------------------------------------
+
+tar -xvpf $SRC/binutils-2.22.tar.bz2 -C $BUILD
+mkdir -v $BUILD/binutils-2.22/binutils-build
+
+expect -c "spawn ls"
+
+rm -fv etc/standards.info
+sed -i.bak '/^INFO/s/standards.info //' etc/Makefile.in
+sed -i "/exception_defines.h/d" ld/testsuite/ld-elf/new.cc
+sed -i "s/-fvtable-gc //" ld/testsuite/ld-selective/selective.exp
+
+../configure --prefix=/usr --enable-shared
+make tooldir=/usr
+make -k check
+make tooldir=/usr install
+cp -v ../binutils-2.22/include/libiberty.h /usr/include
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+##############################################################################################
+##############################################################################################
+6.14. GMP-5.0.4
+#############################################################################################
+------------------------------------
+
+tar -xvpf $SRC/gmp-5.04.tar.gz -C $BUILD
+cd $BUILD/gmp-5.04
+
+./configure --prefix=/usr --enable-cxx --enable-mpbsd
+make
+make check 2>&1 | tee gmp-check-log
+awk '/tests passed/{total+=$2} ; END{print total}' gmp-check-log
+make install
+mkdir -v /usr/share/doc/gmp-5.0.4
+cp    -v doc/{isa_abi_headache,configuration} doc/*.html /usr/share/doc/gmp-5.0.4
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+##############################################################################################
+6.15. MPFR-3.1.0
+#############################################################################################
+------------------------------------
+
+tar -xvpf $SRC/file-5.10.tar.gz -C $BUILD
+cd $BUILD/file-5.10
+
+
+patch -Np1 -i $SRC/mpfr-3.1.0-fixes-1.patch
+./configure --prefix=/usr --enable-thread-safe --docdir=/usr/share/doc/mpfr-3.1.0
+make
+make check
+make install
+
+make html
+make install-html
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+6.16. MPC-0.9
+#############################################################################################
+------------------------------------
+
+tar -xvpf $SRC/file-5.10.tar.gz -C $BUILD
+cd $BUILD/file-5.10
+
+./configure --prefix=/usr
+make
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+6.16. MPC-0.9
+#############################################################################################
+------------------------------------
+
+tar -xvpf $SRC/file-5.10.tar.gz -C $BUILD
+cd $BUILD/file-5.10
+
+./configure --prefix=/usr
+make
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+#############################################################################################
+
+5.5. GCC-4.6.2 - Pass 1
+------------------------------------
+
+tar -xvpf $SRC/gcc-4.6.2.tar.bz2 -C $BUILD
+mkdir $BUILD/gcc-4.6.2/build
+cd $BUILD/gcc-4.6.2/
+
+sed -i 's/install_to_$(INSTALL_DEST) //' libiberty/Makefile.in
+sed -i 's@\./fixinc\.sh@-c true@' gcc/Makefile.in
+
+cd $BUILD/gcc-4.6.2/build
+
+../configure --prefix=/usr \
+    --libexecdir=/usr/lib --enable-shared \
+    --enable-threads=posix --enable-__cxa_atexit \
+    --enable-clocale=gnu --enable-languages=c,c++ \
+    --disable-multilib --disable-bootstrap --with-system-zlib
+
+make -j32
+
+ulimit -s 16384
+make -k check
+../gcc-4.6.2/contrib/test_summary
+
+make install
+
+ln -sv ../usr/bin/cpp /lib
+ln -sv gcc /usr/bin/cc
+
+cd $BUILD
+rm -rvf $BUILD/* 
+
+
+#############################################################################################
+echo 'main(){}' > dummy.c
+cc dummy.c -v -Wl,--verbose &> dummy.log
+readelf -l a.out | grep ': /lib'
+
+[Requesting program interpreter: /lib/ld-linux.so.2]
+
+#############################################################################################
+
+grep -o '/usr/lib.*/crt[1in].*succeeded' dummy.log
+
+/usr/lib/gcc/i686-pc-linux-gnu/4.6.2/../../../crt1.o succeeded
+/usr/lib/gcc/i686-pc-linux-gnu/4.6.2/../../../crti.o succeeded
+/usr/lib/gcc/i686-pc-linux-gnu/4.6.2/../../../crtn.o succeeded
+
+#############################################################################################
+
+grep -B4 '^ /usr/include' dummy.log
+
+#include <...> search starts here:
+ /usr/local/include
+ /usr/lib/gcc/i686-pc-linux-gnu/4.6.2/include
+ /usr/lib/gcc/i686-pc-linux-gnu/4.6.2/include-fixed
+ /usr/include
+
+#############################################################################################
+
+grep 'SEARCH.*/usr/lib' dummy.log |sed 's|; |\n|g'
+
+SEARCH_DIR("/usr/x86_64-unknown-linux-gnu/lib64")
+SEARCH_DIR("/usr/local/lib64")
+SEARCH_DIR("/lib64")
+SEARCH_DIR("/usr/lib64")
+SEARCH_DIR("/usr/x86_64-unknown-linux-gnu/lib")
+SEARCH_DIR("/usr/local/lib")
+SEARCH_DIR("/lib")
+SEARCH_DIR("/usr/lib");
+
+#############################################################################################
+
+grep "/lib.*/libc.so.6 " dummy.log
+
+attempt to open /lib/libc.so.6 succeeded
+
+#############################################################################################
+
+grep found dummy.log
+
+found ld-linux.so.2 at /lib/ld-linux.so.2
+
+#############################################################################################
+
+rm -v dummy.c a.out dummy.log
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5.4. Binutils-2.22 - Pass 1
+#################################
+
+
+
+##############################################################################################
+5.5. GCC-4.6.2 - Pass 1
+------------------------------------
+
+tar -xvpf $SRC/gcc-4.6.2.tar.bz2 -C $BUILD
+tar -xvpf $SRC/mpfr-3.1.0.tar.bz2 -C $BUILD/gcc-4.6.2/
+tar -xvpf $SRC/gmp-5.0.4.tar.xz -C $BUILD/gcc-4.6.2/
+tar -xvpf $SRC/mpc-0.9.tar.gz -C $BUILD/gcc-4.6.2/
+
+mv -v $BUILD/gcc-4.6.2/mpfr-3.1.0 $BUILD/gcc-4.6.2/mpfr
+mv -v $BUILD/gcc-4.6.2/gmp-5.0.4 $BUILD/gcc-4.6.2/gmp
+mv -v $BUILD/gcc-4.6.2/mpc-0.9 $BUILD/gcc-4.6.2/mpc
+
+mkdir $BUILD/gcc-4.6.2/build
+cd $BUILD/gcc-4.6.2/build
+../configure \
+    --target=$LFS_TGT --prefix=/tools \
+    --disable-nls --disable-shared --disable-multilib \
+    --disable-decimal-float --disable-threads \
+    --disable-libmudflap --disable-libssp \
+    --disable-libgomp --disable-libquadmath \
+    --disable-target-libiberty --disable-target-zlib \
+    --enable-languages=c --without-ppl --without-cloog \
+    --with-mpfr-include=$(pwd)/../mpfr/src \
+    --with-mpfr-lib=$(pwd)/mpfr/src/.libs
+
+make -j32
+make install
+ln -vs libgcc.a `gcc -print-libgcc-file-name | sed 's/libgcc/&_eh/'`
+
+cd $BUILD
+rm -rvf $BUILD/* 
+
+
+##############################################################################################
+
+##############################################################################################
+5.7. Glibc-2.14.1
+------------------------------------
+
+tar -xvpf $SRC/glibc-2.14.1.tar.bz2 -C $BUILD
+cd $BUILD/glibc-2.14.1/
+patch -Np1 -i $SRC/glibc-2.14.1-gcc_fix-1.patch
+patch -Np1 -i $SRC/glibc-2.14.1-cpuid-1.patch
+mkdir -pv $BUILD/glibc-2.14.1/build
+cd $BUILD/glibc-2.14.1/build
+../configure --prefix=/tools \
+    --host=$LFS_TGT --build=$(../scripts/config.guess) \
+    --disable-profile --enable-add-ons \
+    --enable-kernel=2.6.25 --with-headers=/tools/include \
+    libc_cv_forced_unwind=yes libc_cv_c_cleanup=yes
+time make -j32
+time make install -j32
+
+cd $BUILD
+rm -rvf $BUILD/* 
+
+
+
+----------------------------------------------------------------------------------------------------------------------------
+##############################################################################################
+5.8. Adjusting the Toolchain
+------------------------------------
+
+SPECS=`dirname $($LFS_TGT-gcc -print-libgcc-file-name)`/specs
+$LFS_TGT-gcc -dumpspecs | sed \
+  -e 's@/lib\(64\)\?/ld@/tools&@g' \
+  -e "/^\*cpp:$/{n;s,$, -isystem /tools/include,}" > $SPECS 
+echo "New specs file is: $SPECS"
+unset SPECS
+
+------------------------------------
+
+------------------------------------
+[Requesting program interpreter: /tools/lib64/ld-linux-x86-64.so.2]
+------------------------------------
+
+##############################################################################################
+5.9. Binutils-2.22 - Pass 2
+------------------------------------
+
+
+tar -xvpf $SRC/binutils-2.22.tar.bz2 -C $BUILD
+mkdir $BUILD/binutils-2.22/build/
+cd $BUILD/binutils-2.22/build/
+
+../configure CC="$LFS_TGT-gcc -B/tools/lib/" AR=$LFS_TGT-ar RANLIB=$LFS_TGT-ranlib \
+	--prefix=/tools --build=$LFS_TGT --disable-nls --with-lib-path=/tools/lib
+
+make -j32
+make install
+make -C ld clean
+make -C ld LIB_PATH=/usr/lib:/lib
+cp -v ld/ld-new /tools/bin
+
+cd $BUILD
+rm -rvf $BUILD/* 
+
+##############################################################################################
+5.10. GCC-4.6.2 - Pass 2
+------------------------------------
+
+
+tar -xvpf $SRC/gcc-4.6.2.tar.bz2 -C $BUILD
+mkdir $BUILD/gcc-4.6.2/build
+cd $BUILD/gcc-4.6.2
+
+patch -Np1 -i $SRC/gcc-4.6.2-startfiles_fix-1.patch
+
+cp -v gcc/Makefile.in{,.orig}
+sed 's@\./fixinc\.sh@-c true@' gcc/Makefile.in.orig > gcc/Makefile.in
+
+cp -v gcc/Makefile.in{,.tmp}
+sed 's/^T_CFLAGS =$/& -fomit-frame-pointer/' gcc/Makefile.in.tmp > gcc/Makefile.in
+
+for file in $(find gcc/config -name linux64.h -o -name linux.h -o -name sysv4.h)
+do
+  cp -uv $file{,.orig}
+  sed -e 's@/lib\(64\)\?\(32\)\?/ld@/tools&@g' -e 's@/usr@/tools@g' $file.orig > $file
+  echo '
+#undef STANDARD_INCLUDE_DIR
+#define STANDARD_INCLUDE_DIR 0
+#define STANDARD_STARTFILE_PREFIX_1 ""
+#define STANDARD_STARTFILE_PREFIX_2 ""' >> $file
+  touch $file.orig
+done
+
+case $(uname -m) in
+  x86_64)
+    for file in $(find gcc/config -name t-linux64) ; do \
+      cp -v $file{,.orig}
+      sed '/MULTILIB_OSDIRNAMES/d' $file.orig > $file
+    done
+  ;;
+esac
+
+tar -xvpf $SRC/mpfr-3.1.0.tar.bz2 -C $BUILD/gcc-4.6.2/
+tar -xvpf $SRC/gmp-5.0.4.tar.xz -C $BUILD/gcc-4.6.2/
+tar -xvpf $SRC/mpc-0.9.tar.gz -C $BUILD/gcc-4.6.2/
+
+mv -v $BUILD/gcc-4.6.2/mpfr-3.1.0 $BUILD/gcc-4.6.2/mpfr
+mv -v $BUILD/gcc-4.6.2/gmp-5.0.4 $BUILD/gcc-4.6.2/gmp
+mv -v $BUILD/gcc-4.6.2/mpc-0.9 $BUILD/gcc-4.6.2/mpc
+
+
+cd $BUILD/gcc-4.6.2/build
+
+../configure CC="$LFS_TGT-gcc -B/tools/lib/" AR=$LFS_TGT-ar RANLIB=$LFS_TGT-ranlib \
+	 --build=$LFS_TGT --prefix=/tools \
+    --with-local-prefix=/tools --enable-clocale=gnu \
+    --enable-shared --enable-threads=posix \
+    --enable-__cxa_atexit --enable-languages=c,c++ \
+    --disable-libstdcxx-pch --disable-multilib \
+    --disable-bootstrap --disable-libgomp \
+    --without-ppl --without-cloog \
+    --with-mpfr-include=$(pwd)/../mpfr/src \
+    --with-mpfr-lib=$(pwd)/mpfr/src/.libs
+make -j32
+make install                                                                                                                                                                                                                                                                                                                                                                                                                      
+ln -vs gcc /tools/bin/cc
+
+cd $BUILD
+rm -rvf $BUILD/* 
+
+------------------------------------
+echo 'main(){}' > dummy.c
+cc dummy.c
+readelf -l a.out | grep ': /tools'
+------------------------------------
+[Requesting program interpreter: /tools/lib/ld-linux.so.2]
+------------------------------------
+
+
+##############################################################################################
+
+5.11. Tcl-8.5.11
+------------------------------------
+
+
+tar -xvpf $SRC/tcl8.5.11-src.tar.gz -C $BUILD
+cd $BUILD/tcl8.5.11/unix
+./configure --prefix=/tools
+make -j32
+#TZ=UTC make test
+make install
+chmod -v u+w /tools/lib/libtcl8.5.so
+make install-private-headers
+ln -sv tclsh8.5 /tools/bin/tclsh
+
+cd $BUILD
+rm -rvf $BUILD/* 
+
+
+##############################################################################################
+5.12. Expect-5.45
+------------------------------------
+
+
+
+tar -xvpf $SRC/expect5.45.tar.gz -C $BUILD
+cd $BUILD/expect5.45
+
+cp -v configure{,.orig}
+sed 's:/usr/local/bin:/bin:' configure.orig > configure
+
+./configure --prefix=/tools --with-tcl=/tools/lib --with-tclinclude=/tools/include
+
+make 
+#make test
+make SCRIPTS="" install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.13. DejaGNU-1.5
+------------------------------------
+
+tar -xvpf $SRC/dejagnu-1.5.tar.gz -C $BUILD
+cd $BUILD/dejagnu-1.5
+
+./configure --prefix=/tools
+
+make -j32
+make install
+make check
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.14. Check-0.9.8
+------------------------------------
+tar -xvpf $SRC/check-0.9.8.tar.gz -C $BUILD
+cd $BUILD/check-0.9.8
+
+./configure --prefix=/tools
+
+make -j32
+make install
+make check
+
+cd $BUILD
+rm -rvf $BUILD/*
+##############################################################################################
+
+##############################################################################################
+5.16. Bash-4.2
+------------------------------------
+
+tar -xvpf $SRC/bash-4.2.tar.gz -C $BUILD
+cd $BUILD/bash-4.2
+
+patch -Np1 -i $SRC/bash-4.2-fixes-4.patch
+
+./configure --prefix=/tools --without-bash-malloc
+make -j32
+make tests
+make install
+ln -vs bash /tools/bin/sh
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.17. Bzip2-1.0.6
+------------------------------------
+
+tar -xvpf $SRC/bzip2-1.0.6.tar.gz -C $BUILD
+cd $BUILD/bzip2-1.0.6
+
+make
+make PREFIX=/tools install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.18. Coreutils-8.15
+------------------------------------
+
+tar -xvpf $SRC/coreutils-8.15.tar.xz -C $BUILD
+cd $BUILD/coreutils-8.15
+
+./configure --prefix=/tools --enable-install-program=hostname
+
+make -j32
+make RUN_EXPENSIVE_TESTS=yes check
+make install
+cp -v src/su /tools/bin/su-tools
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.19. Diffutils-3.2
+------------------------------------
+
+tar -xvpf $SRC/diffutils-3.2.tar.gz -C $BUILD
+cd $BUILD/diffutils-3.2
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+
+
+
+##############################################################################################
+5.21. Findutils-4.4.2
+------------------------------------
+
+tar -xvpf $SRC/findutils-4.4.2.tar.gz -C $BUILD
+cd $BUILD/findutils-4.4.2
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.22. Gawk-4.0.0
+------------------------------------
+
+tar -xvpf $SRC/gawk-4.0.0.tar.bz2 -C $BUILD
+cd $BUILD/gawk-4.0.0
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.23. Gettext-0.18.1.1
+------------------------------------
+
+tar -xvpf $SRC/gettext-0.18.1.1.tar.gz -C $BUILD
+cd $BUILD/gettext-0.18.1.1/gettext-tools
+
+./configure --prefix=/tools --disable-shared
+make -C gnulib-lib -j32
+make -C src msgfmt -j32
+cp -v src/msgfmt /tools/bin
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.24. Grep-2.10
+------------------------------------
+
+tar -xvpf $SRC/grep-2.10.tar.xz -C $BUILD
+cd $BUILD/grep-2.10
+
+./configure --prefix=/tools --disable-perl-regexp
+make -j32
+make check
+make install
+
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.25. Gzip-1.4
+------------------------------------
+
+tar -xvpf $SRC/gzip-1.4.tar.gz -C $BUILD
+cd $BUILD/gzip-1.4
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+
+
+
+##############################################################################################
+5.27. Make-3.82
+------------------------------------
+
+tar -xvpf $SRC/make-3.82.tar.bz2 -C $BUILD
+cd $BUILD/make-3.82
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.28. Patch-2.6.1
+------------------------------------
+
+tar -xvpf $SRC/patch-2.6.1.tar.bz2 -C $BUILD
+cd $BUILD/patch-2.6.1
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.29. Perl-5.14.2
+------------------------------------
+
+tar -xvpf $SRC/perl-5.14.2.tar.bz2 -C $BUILD
+cd $BUILD/perl-5.14.2
+
+patch -Np1 -i $SRC/perl-5.14.2-libc-1.patch
+sh Configure -des -Dprefix=/tools
+
+make -j32
+cp -v perl cpan/podlators/pod2man /tools/bin
+mkdir -pv /tools/lib/perl5/5.14.2
+cp -Rv lib/* /tools/lib/perl5/5.14.2
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.30. Sed-4.2.1
+------------------------------------
+
+tar -xvpf $SRC/sed-4.2.1.tar.bz2 -C $BUILD
+cd $BUILD/sed-4.2.1
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+
+##############################################################################################
+5.31. Tar-1.26
+------------------------------------
+
+tar -xvpf $SRC/tar-1.26.tar.bz2 -C $BUILD
+cd $BUILD/tar-1.26
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+##############################################################################################
+5.32. Texinfo-4.13a
+------------------------------------
+
+tar -xvpf $SRC/texinfo-4.13a.tar.gz -C $BUILD
+cd $BUILD/texinfo-4.13
+
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+##############################################################################################
+5.33. Xz-5.0.3
+------------------------------------
+
+tar -xvpf $SRC/xz-5.0.3.tar.bz2 -C $BUILD
+cd $BUILD/xz-5.0.3
+
+./configure --prefix=/tools
+make -j32
+make check
+make install
+
+cd $BUILD
+rm -rvf $BUILD/*
+
+##############################################################################################
+5.34. Stripping
+------------------------------------
+
+strip --strip-debug /tools/lib/*
+strip --strip-unneeded /tools/{,s}bin/*
+rm -rf /tools/{,share}/{info,man,doc}
+
+##############################################################################################
+
+
+
+
+
+
+

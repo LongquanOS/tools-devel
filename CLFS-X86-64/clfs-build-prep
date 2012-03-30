@@ -1,0 +1,59 @@
+#!/bin/sh
+
+###############################################################################
+prep env
+#################################
+
+export TMPOS=/mnt/clfs
+
+install -dv $TMPOS/
+install -dv $TMPOS/tools
+install -dv $TMPOS/sources
+install -dv $TMPOS/sources/build
+
+export SRC=$TMPOS/sources
+export BUILD=$TMPOS/sources/build
+
+install -dv $TMPOS/cross-tools
+
+ln -sv $TMPOS/tools /
+ln -sv $TMPOS/cross-tools /
+
+cat > ~/.bash_profile << "EOF"
+exec env -i HOME=${HOME} TERM=${TERM} PS1='\u:\w\$ ' /bin/bash
+EOF
+
+cat > ~/.bashrc << "EOF"
+set +h
+umask 022
+TMPOS=/mnt/clfs
+
+LC_ALL=POSIX
+PATH=/cross-tools/bin:/bin:/usr/bin:/tools/bin:/tools/sbin:/sbin:/usr/sbin:
+export CLFS LC_ALL PATH
+EOF
+
+source ~/.bash_profile
+
+
+unset CFLAGS
+unset CXXFLAGS
+
+echo unset CFLAGS >> ~/.bashrc
+echo unset CXXFLAGS >> ~/.bashrc
+
+export BUILD64="-m64"
+echo export BUILD64=\""${BUILD64}\"" >> ~/.bashrc
+
+export CLFS_HOST=$(echo ${MACHTYPE} | sed -e 's/-[^-]*/-cross/')
+export CLFS_TARGET="x86_64-unknown-linux-gnu"
+
+cat >> ~/.bashrc << EOF
+export CLFS_HOST="${CLFS_HOST}"
+export CLFS_TARGET="${CLFS_TARGET}"
+EOF
+
+
+###############################################################################
+
+

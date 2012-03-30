@@ -1,0 +1,75 @@
+****************************************************************************************  
+1. install SQLite-3.7.3
+****************************************************************************************
+
+tar -xpvf sqlite-autoconf-3070800.tar.gz 
+cd sqlite-autoconf-3070800
+CFLAGS="-g -O2 -DSQLITE_SECURE_DELETE -DSQLITE_ENABLE_UNLOCK_NOTIFY=1" ./configure --prefix=/usr --enable-threadsafe --enable-readline --enable-dynamic-extensions &&
+make
+make install
+
+****************************************************************************************
+2.install NSPR
+****************************************************************************************
+
+tar -xvpf nspr-4.8.6.tar.gz.1  
+cd nspr-4.8.6
+patch -Np1 -i nspr-4.8.6-pkgconfig-1.patch &&
+cd mozilla/nsprpub &&
+./configure --prefix=/usr --with-mozilla --with-pthreads --enable-64bit
+make && make install
+
+****************************************************************************************
+3.install NSS-3.13.1
+****************************************************************************************
+
+tar -xzf nss-3.12.11.tar.gz
+cd nss-3.12.11
+
+bash
+export USE_64=1 
+export BUILD_OPT=1 &&
+export NSS_USE_SYSTEM_SQLITE=1 &&
+export NSPR_INCLUDE_DIR=/usr/include/nspr &&
+export USE_SYSTEM_ZLIB=1 &&
+export ZLIB_LIBS=-lz &&
+patch -Np1 -i ../nss-3.12.8-standalone-1.patch &&
+make  mozilla/security/nss nss_build_all
+export NSS_LINUXDIR=$(basename `ls -d $PWD/mozilla/dist/Linux*`) &&
+cd mozilla/dist &&
+install -v -m755 $NSS_LINUXDIR/lib/*.so /usr/lib &&
+install -v -m644 $NSS_LINUXDIR/lib/{*.chk,libcrmf.a} /usr/lib &&
+install -v -m755 -d /usr/include/nss &&
+install -v -m755 $NSS_LINUXDIR/bin/{certutil,nssonfig,pk12util} /usr/bin &&
+install -v -m644 $NSS_LINUXDIR/lib/pkgconfig/nss.pc /usr/lib/pkgconfig &&
+cp -v -RL {public,private}/nss/* /usr/include/nss &&
+chmod 644 /usr/include/nss/*
+exit
+
+****************************************************************************************
+4.install popt
+****************************************************************************************
+
+tar -xvpf popt-1.16.tar.gz  
+cd /popt-1.16
+./configure --prefix=/usr
+make && make install
+
+
+****************************************************************************************
+5.install db-4.8.26.tar.gz
+****************************************************************************************
+
+tar -xvpf db-4.8.26.tar.gz  
+cd db-4.8.26/build_unix
+../dist/configure --prefix=/usr --enableompat185 --enablexx
+make && make install
+
+****************************************************************************************
+6.rpm 4.8 
+****************************************************************************************
+
+tar -xvpf rpm-4.8.1.tar.bz2
+cd rpm-4.8.1
+./configure CPPFLAGS="-I/usr/include/nspr -I/usr/include/nss" --prefix=/usr --without-lua --with-external-db
+make && make install 

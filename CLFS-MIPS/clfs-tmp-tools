@@ -1,0 +1,305 @@
+#!/bin/sh
+
+export SRC=/mnt/clfs/sources
+export BUILD=/mnt/clfs/sources/build
+
+#clean build dirs 
+function ebuild_clean()
+{
+  cd $BUILD && rm -rvf $BUILD/* 
+}
+
+function ebuild_make()
+{
+  make -j32 && make install
+}
+
+
+mkdir -pv ${TMPOS}/{bin,boot,dev,{etc/,}opt,home,lib,mnt}
+mkdir -pv ${TMPOS}/{proc,media/{floppy,cdrom},sbin,srv,sys}
+mkdir -pv ${TMPOS}/var/{lock,log,mail,run,spool}
+mkdir -pv ${TMPOS}/var/{opt,cache,lib/{misc,locate},local}
+install -dv -m 0750 ${TMPOS}/root
+install -dv -m 1777 ${TMPOS}{/var,}/tmp
+mkdir -pv ${TMPOS}/usr/{,local/}{bin,include,lib,sbin,src}
+mkdir -pv ${TMPOS}/usr/{,local/}share/{doc,info,locale,man}
+mkdir -pv ${TMPOS}/usr/{,local/}share/{misc,terminfo,zoneinfo}
+mkdir -pv ${TMPOS}/usr/{,local/}share/man/man{1,2,3,4,5,6,7,8}
+for dir in ${TMPOS}/usr{,/local}; do
+  ln -sv share/{man,doc,info} $dir
+done
+
+
+
+###############################################################################
+5.5. Linux-Headers-3.2.6 
+------------------------------------
+
+tar -xvpf $SRC/linux-3.2.6.tar.xz -C $BUILD
+cd $BUILD/linux-3.2.6/
+
+install -dv $TMPOS/usr/include
+make mrproper
+make ARCH=mips headers_check
+make ARCH=mips INSTALL_HDR_PATH=dest headers_install
+cp -rv dest/include/* $TMPOS/usr/include
+
+ebuild_clean
+
+#################################################################################
+5.6. File-5.10 
+------------------------------------
+
+tar -xvpf $SRC/file-5.10.tar.gz -C $BUILD
+cd $BUILD/file-5.10
+
+./configure --prefix=/cross-tools
+
+ebuild_make
+ebuild_clean
+
+#################################################################################
+
+5.26. M4-1.4.16
+------------------------------------
+
+tar -xvpf $SRC/m4-1.4.16.tar.bz2 -C $BUILD
+cd $BUILD/m4-1.4.16
+
+./configure --prefix=/cross-tools
+
+ebuild_make
+ebuild_clean
+
+#################################################################################
+5.8. Ncurses-5.9 
+------------------------------------
+
+tar -xvpf $SRC/ncurses-5.9.tar.gz -C $BUILD
+cd $BUILD/ncurses-5.9
+
+patch -Np1 -i $SRC/ncurses-5.9-bash_fix-1.patch
+./configure --prefix=/cross-tools --without-debug --without-shared
+make -C include
+make -C progs tic
+install -v -m755 progs/tic /cross-tools/bin
+
+ebuild_clean
+
+#################################################################################
+5.9. GMP-5.0.4 
+####################################
+
+tar -xvpf $SRC/gmp-5.0.4.tar.xz -C $BUILD
+cd $BUILD/gmp-5.0.4
+
+CPPFLAGS=-fexceptions ./configure --prefix=/cross-tools --enable-cxx
+
+ebuild_make
+ebuild_clean
+
+#################################################################################
+5.10. MPFR-3.1.0
+######################################
+
+tar -xvpf $SRC/mpfr-3.1.0.tar.bz2 -C $BUILD
+cd $BUILD/mpfr-3.1.0
+
+
+LDFLAGS="-Wl,-rpath,/cross-tools/lib" ./configure --prefix=/cross-tools \
+    --enable-shared --with-gmp=/cross-tools
+
+ebuild_make
+ebuild_clean
+
+#################################################################################
+
+tar -xvpf $SRC/mpc-0.9.tar.gz -C $BUILD
+cd $BUILD/mpc-0.9
+
+
+LDFLAGS="-Wl,-rpath,/cross-tools/lib" \
+./configure --prefix=/cross-tools \
+    --with-gmp=/cross-tools \
+    --with-mpfr=/cross-tools
+    
+ebuild_make
+ebuild_clean
+
+#################################################################################
+5.12. PPL-0.11.2 
+#################
+
+
+tar -xvpf $SRC/ppl-0.11.2.tar.bz2 -C $BUILD
+cd $BUILD/ppl-0.11.2
+CPPFLAGS="-I/cross-tools/include" \
+    LDFLAGS="-Wl,-rpath,/cross-tools/lib" \
+    ./configure --prefix=/cross-tools --enable-shared \
+    --enable-interfaces="c,cxx" --disable-optimization \
+    --with-libgmp-prefix=/cross-tools \
+    --with-libgmpxx-prefix=/cross-tools
+
+ 
+ebuild_make
+ebuild_clean
+
+
+#################################################################################
+
+tar -xvpf $SRC/cloog-0.16.3.tar.gz -C $BUILD
+cd $BUILD/cloog-0.16.3
+
+cp -v configure{,.orig}
+sed -e "/LD_LIBRARY_PATH=/d" configure.orig > configure
+
+LDFLAGS="-Wl,-rpath,/cross-tools/lib" ./configure --prefix=/cross-tools --enable-shared --with-gmp-prefix=/cross-tools
+
+ebuild_make && ebuild_clean
+
+#################################################################################
+
+tar -xvpf $SRC/binutils-2.22.tar.bz2 -C $BUILD
+mkdir -v $BUILD/binutils-2.22/build
+cd $BUILD/binutils-2.22/build/
+
+AR=ar AS=as ../configure --prefix=/cross-tools --build=${CLFS_HOST} --host=${CLFS_HOST} --target=${CLFS_TARGET} --with-sysroot=${TMPOS} --disable-nls --enable-shared --enable-64-bit-bfd --with-ppl=/cross-tools --with-cloog=/cross-tools --enable-cloog-backend=isl
+
+make configure-host -j32
+make -j32
+cp -v ../include/libiberty.h $TMPOS/usr/include
+
+ebuild_clean
+
+#################################################################################
+
+tar -xvpf $SRC/gcc-4.6.2.tar.bz2 -C $BUILD
+mkdir -v $BUILD/gcc-4.6.2/build
+
+#cd $BUILD/gcc-4.6.2/gcc/config/
+#for file in `find . | grep ".h"`  ; do sed -i.org 's@\/lib64@\/tools@g' $file; done
+#for file in `find . | grep ".h"`  ; do sed -i.org 's@\/lib@\/tools@g' $file; done
+#rm -v `find . | grep ".org"`
+
+cd $BUILD/gcc-4.6.2/
+
+#patch -Np1 -i $SRC/gcc-4.6.2-specs-1.patch
+#patch -Np1 -i $SRC/gcc-4.6.2-mips_fix-1.patch
+
+#@echo -en '#undef STANDARD_INCLUDE_DIR\n#define STANDARD_INCLUDE_DIR "/usr/include/"\n\n' >> gcc/config/rs6000/sysv4.h
+#echo -en '\n#undef STANDARD_STARTFILE_PREFIX_1\n#define STANDARD_STARTFILE_PREFIX_1 "/tools/lib/"\n' >> gcc/config/rs6000/sysv4.h
+#echo -en '\n#undef STANDARD_STARTFILE_PREFIX_2\n#define STANDARD_STARTFILE_PREFIX_2 ""\n' >> gcc/config/rs6000/sysv4.h
+
+#cp -v gcc/Makefile.in{,.orig}
+#sed -e "s@\(^CROSS_SYSTEM_HEADER_DIR =\).*@\1 /tools/include@g" \
+#    gcc/Makefile.in.orig > gcc/Makefile.in
+    
+#touch /tools/include/limits.h
+
+cd $BUILD/gcc-4.6.2/build
+
+AR=ar LDFLAGS="-Wl,-rpath,/cross-tools/lib" \
+  ../configure --prefix=/cross-tools \
+  --build=${CLFS_HOST} --host=${CLFS_HOST} --target=${CLFS_TARGET} \
+  --with-sysroot=${TMPOS} --disable-nls \
+  --disable-shared --with-mpfr=/cross-tools --with-gmp=/cross-tools \
+  --with-ppl=/cross-tools --with-cloog=/cross-tools \
+  --without-headers --with-newlib --disable-decimal-float \
+  --disable-libgomp --disable-libmudflap --disable-libssp \
+  --disable-threads --enable-languages=c --with-abi=64\
+  --disable-multilib --enable-cloog-backend=isl
+
+make all-gcc -j32
+make all-target-libgcc -j32
+make install-gcc install-target-libgcc -j32
+
+ebuild_clean
+
+###############################################################################################################
+tar -xvpf $SRC/eglibc-2.15-r17386.tar.bz2  -C $BUILD
+mkdir $BUILD/eglibc-2.15/build
+cd $BUILD/eglibc-2.15
+
+cp -v Makeconfig{,.orig}
+sed -e 's/-lgcc_eh//g' Makeconfig.orig > Makeconfig
+
+cp -v config.make.in{,.orig}
+sed '/ldd-rewrite-script/s:@:${objdir}/&:' config.make.in.orig > config.make.in
+
+cd $BUILD/eglibc-2.15/build
+
+cat > config.cache << "EOF"
+libc_cv_forced_unwind=yes
+libc_cv_c_cleanup=yes
+libc_cv_gnu89_inline=yes
+libc_cv_ssp=no
+EOF
+
+cat > configparms << "EOF"
+installroot=${TMPOS}
+libdir=/usr/lib
+EOF
+
+BUILD_CC="gcc" CC="${CLFS_TARGET}-gcc ${BUILD64}" \
+      AR="${CLFS_TARGET}-ar" RANLIB="${CLFS_TARGET}-ranlib" \
+      ../configure --prefix=/usr \
+      --host=${CLFS_TARGET} --build=${CLFS_HOST} \
+      --disable-profile --enable-add-ons \
+      --with-tls --enable-kernel=2.6.0 --with-__thread \
+      --with-binutils=/cross-tools/bin --with-headers=${TMPOS}/usr/include \
+      --cache-file=config.cache
+
+make -j32
+make install inst_vardbdir=/tools/var/db 
+
+##################################################################################################
+
+
+tar -xvpf $SRC/gcc-4.6.2.tar.bz2 -C $BUILD
+mkdir -v $BUILD/gcc-4.6.2/build
+
+cd $BUILD/gcc-4.6.2/gcc/config/
+
+for file in `find . | grep ".h"`  ; do sed -i.org 's@\/lib64@\/tools@g' $file; done
+for file in `find . | grep ".h"`  ; do sed -i.org 's@\/lib@\/tools@g' $file; done
+
+rm -v `find . | grep ".org"`
+
+cd $BUILD/gcc-4.6.2/
+
+echo -en '#undef STANDARD_INCLUDE_DIR\n#define STANDARD_INCLUDE_DIR "/tools/include/"\n\n' >> gcc/config/linux.h
+echo -en '\n#undef STANDARD_STARTFILE_PREFIX_1\n#define STANDARD_STARTFILE_PREFIX_1 "/tools/lib/"\n' >> gcc/config/linux.h
+echo -en '\n#undef STANDARD_STARTFILE_PREFIX_2\n#define STANDARD_STARTFILE_PREFIX_2 ""\n' >> gcc/config/linux.h
+
+cp -v gcc/Makefile.in{,.orig}
+sed -e "s@\(^CROSS_SYSTEM_HEADER_DIR =\).*@\1 /tools/include@g" \
+    gcc/Makefile.in.orig > gcc/Makefile.in
+
+touch /tools/include/limits.h
+
+cd $BUILD/gcc-4.6.2/build
+
+AR=ar LDFLAGS="-Wl,-rpath,/cross-tools/lib" \
+  ../gcc-4.6.2/configure --prefix=/cross-tools \
+  --build=${CLFS_HOST} --target=${CLFS_TARGET} --host=${CLFS_HOST} \
+  --with-sysroot=${CLFS} --with-local-prefix=/tools --disable-nls \
+  --enable-shared --enable-languages=c,c++ --enable-__cxa_atexit \
+  --with-mpfr=/cross-tools --with-gmp=/cross-tools --enable-c99 \
+  --with-ppl=/cross-tools --with-cloog=/cross-tools --enable-cloog-backend=isl \
+  --enable-long-long --enable-threads=posix --disable-multilib
+
+
+make AS_FOR_TARGET="${CLFS_TARGET}-as" LD_FOR_TARGET="${CLFS_TARGET}-ld"
+make install
+
+
+
+
+
+
+
+
+
+
+
+
