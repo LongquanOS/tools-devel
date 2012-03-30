@@ -1,44 +1,98 @@
-< xml version="1.0" encoding="gb2312" >
-<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
-"http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd"
->
+<?xml version='1.0' encoding="UTF-8"?>
 <book>
 <bookinfo>
-<title>An Example Book</title>
+<title>龙泉操作系统工具链开发文档 </title>
 <author>
-<firstname>Your first name</firstname>
-<surname>Your surname</surname>
+<firstname>工具链开发组</firstname>
 <affiliation>
-<address><email>foo@example.com</email></address>
+<address><email>LongquanOS@163.com</email></address>
 </affiliation>
 </author>
 
 <copyright>
-<year>2000</year>
-<holder>Copyright string here</holder>
+<year>2012</year>
+<holder>Copyright FDL </holder>
 </copyright>
 
 <abstract>
-<para>If your book has an abstract then it should go here.</para>
+<para>在GNU/Linux世界,bintuils,gcc,glibc是用于构建整个系统的基石，如果准备维护一个自己的发行版本，需要开发组按照自己的方式来维护工具链</para>
 </abstract>
 </bookinfo>
 
 <preface>
-<title>Preface</title>
-
-<para>Your book may have a preface, in which case it should be placed
-here.</para>
+  <title>准备工作</title>
+<para>LFS拥有着非常好的文档，我们可以依据ＣＬＦＳ文档来构建我们的工具链，下面是具体的准备工作：</para>
 </preface>
 
-<chapter>
-<title>My first chapter</title>
+<para>定义一些后续要经常用的变量，并建立相应目录</para>
 
-<para>This is the first chapter in my book.</para>
+<screen>
+export TMPOS=/mnt/clfs
+export SRC=$TMPOS/sources
+export BUILD=$TMPOS/sources/build
+
+install -dv $TMPOS
+install -dv $SRC
+install -dv $BUILD
+
+简要说明：
+/mnt/clfs		建立一个工作目录，作为我们的基地，即将构建的工具链的根目录
+/mnt/clfs/sources	用来存放需要用到的源码包
+/mnt/clfs/sources/build 是我们即将构建的工具链条的临时编译目录
+</screen>
+
+<para>在工作目录下建立tools,cross-tools目录，并建立指向当前系统的链接，以便于后续clfs用户使用该目录</para>
+
+<screen>
+install -dv $TMPOS/tools
+install -dv $TMPOS/cross-tools
+
+ln -sv $TMPOS/tools /
+ln -sv $TMPOS/cross-tools /
+</screen>
+
+<para>为了最大化的减少宿主系统对我们编译工作的影响，我们需要建立一个专用用户clfs,并将之前建立的目录权限更改为CLFS用户所属,后续的所有工作都将在clfs用户下完成</para>
+
+<screen>
+groupadd clfs
+useradd -s /bin/bash -g clfs -d /home/clfs clfs
+mkdir -pv /home/clfs
+chown -v clfs:clfs /home/clfs
+
+chown -Rv clfs:clfs ${TMPOS}/sources
+chown -Rv clfs:clfs ${TMPOS}/tools
+chown -Rv clfs:clfs ${TMPOS}/cross-tools
+</screen>
+
+<chapter>
+<title>以clfs身份登录</title>
+
+<para>从现在起，我们将远离喧嚣的系统，开始重新塑造这个世界</para>
 
 <sect1 id="1.1">
-<title>My first section</title>
+<title>设置环境变量</title>
 
 <para>This is the first section in my book.</para>
+
+<screen>
+<![CDATA[ 
+cat > ~/.bash_profile << "EOF"
+exec env -i HOME=${HOME} TERM=${TERM} PS1='\u:\w\$ ' /bin/bash
+EOF
+
+cat > ~/.bashrc << "EOF"
+set +h
+umask 022
+TMPOS=/mnt/clfs
+
+LC_ALL=POSIX
+PATH=/cross-tools/bin:/bin:/usr/bin:/tools/bin:/tools/sbin:/sbin:/usr/sbin:
+export CLFS LC_ALL PATH
+EOF
+]]>
+
+source ~/.bash_profile
+</screen>
 </sect1>
 <sect1 id="1.2">
 <title>my second section</title>
